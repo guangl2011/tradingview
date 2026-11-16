@@ -47,3 +47,5 @@ jobs:
             git commit -m "chore: FX daily snapshot $(date -u +%F)"
             git push
           fi
+
+# registration nudge: 2026-11-16
