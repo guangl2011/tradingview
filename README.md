@@ -18,12 +18,37 @@ tests/        Unit tests (pytest)
 
 ## Loading the strategy into TradingView
 
-Coming in an upcoming PR (`strategies/fx_major_breakout.pine`). High-level steps once it lands:
+Source: `strategies/fx_major_breakout.pine` (Pine Script v6). TradingView has no
+API for installing strategies, so this is a one-time manual paste per chart.
 
-1. Open a major-pair chart on TradingView.
-2. Open the Pine Editor, paste the strategy source, and click "Add to chart".
-3. Review the Strategy Tester output.
-4. Create an alert on the strategy and point the webhook at your Slack incoming-webhook URL.
+1. Open a major-pair chart in TradingView (e.g. `EURUSD`, daily timeframe).
+2. Open the **Pine Editor** panel (bottom of the chart), delete the placeholder code.
+3. Paste the full contents of `strategies/fx_major_breakout.pine`.
+4. Click **Save**, then **Add to chart**. The Donchian bands and a red trailing-stop
+   line appear on the chart.
+5. Verify the **Strategy Tester** tab shows trades on the major pair. If it is empty,
+   extend the chart history (the 55-day Donchian short side needs data before the
+   first signal) and confirm ADX is above the 20 threshold on entry bars.
+6. Create the Slack alert: click the **Alerts** panel → **Create Alert** → set
+   **Condition** to `FX Major Breakout` and choose **`alert() function calls only`**
+   (not "Order fills only" — the JSON message is emitted by `alert()` calls).
+   Recommended: trigger "Once Per Bar Close".
+7. Under **Notifications**, check **Webhook URL** and paste your Slack incoming-webhook
+   URL as the destination. The message is sent as-is:
+   `{"text":"FX breakout: EURUSD long @ 1.0842 (20d Donchian, ADX 27)"}` — Slack
+   posts it straight into the channel. No receiver server is needed.
+
+Notes:
+
+- The alert price is the signal bar's close; the strategy order itself fills on the
+  next bar's open.
+- Sizing is risk-percent-of-equity (default 1%) mapped through the ATR stop distance.
+  It is exact for USD-quoted pairs and approximate for USD-base pairs (USDJPY,
+  USDCHF, USDCAD).
+- Repeat steps 2–7 on one chart per pair you want monitored.
+
+> **Disclaimer:** All signals are informational research output only — not trading
+> advice and not a guarantee of returns. This script never places orders.
 
 ## Slack alert configuration
 
