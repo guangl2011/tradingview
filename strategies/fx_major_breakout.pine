@@ -1,0 +1,94 @@
+//@version=6
+// FX Major Breakout — trend-following Donchian breakout for the 7 FX majors.
+//
+// Entries:  close breaks the prior 20-day Donchian high (long) or the prior
+//           55-day Donchian low (short), gated by ADX(14) > 20 so ranges stay out.
+// Exits:    ATR(14) x multiplier trailing stop (ratchets with the trend), plus an
+//           opposite-Donchian exit (long exits on the 20d low, short on the 55d high).
+// Sizing:   risk-percent-of-equity mapped through the ATR stop distance. The
+//           conversion treats a 1.0 price move as $1 per unit, which is exact for
+//           USD-quoted pairs (EURUSD, GBPUSD, AUDUSD, NZDUSD) and an approximation
+//           for USD-base pairs (USDJPY, USDCHF, USDCAD).
+// Alerts:   alert() emits a single-field Slack payload:
+//           {"text":"FX breakout: EURUSD long @ 1.0842 (20d Donchian, ADX 27)"}
+//           Point a TradingView alert ("alert() function calls only") at a Slack
+//           incoming webhook URL — no receiver server needed.
+//
+// Informational research tool only — not trading advice; this script never routes orders.
+strategy("FX Major Breakout", overlay = true, pyramiding = 0, initial_capital = 100000)
+
+// ---- Inputs ----
+string dirMode    = input.string("Both", "Trade direction", options = ["Both", "Long only", "Short only"])
+int    donLenLong  = input.int(20, "Donchian entry length (long side)")
+int    donLenShort = input.int(55, "Donchian entry length (short side)")
+int    adxLen      = input.int(14, "ADX length")
+float  adxThresh   = input.float(20.0, "ADX trend threshold", minval = 1.0)
+int    atrLen      = input.int(14, "ATR length")
+float  atrMult     = input.float(3.0, "ATR stop multiplier", minval = 0.5, step = 0.5)
+float  riskPct     = input.float(1.0, "Risk % of equity per trade", minval = 0.1, step = 0.1)
+
+// ---- Indicators ----
+// [1]: prior completed bar's channel, so a breakout means close exceeds a band
+// the current bar did not contribute to.
+float donHighLong  = ta.highest(high, donLenLong)[1]
+float donLowLong   = ta.lowest(low, donLenLong)[1]
+float donHighShort = ta.highest(high, donLenShort)[1]
+float donLowShort  = ta.lowest(low, donLenShort)[1]
+
+[diPlus, diMinus, adxVal] = ta.dmi(adxLen, adxLen)
+float atrVal = ta.atr(atrLen)
+
+bool trendUp    = adxVal > adxThresh
+bool allowLong  = dirMode != "Short only"
+bool allowShort = dirMode != "Long only"
+
+// ---- Sizing ----
+// Risk cash / stop distance = units to hold so the ATR stop loses riskPct of equity.
+float stopDist = atrVal * atrMult
+float qty      = stopDist > 0 ? strategy.equity * (riskPct / 100) / stopDist : na
+
+// ---- Entries ----
+bool longSignal  = allowLong and trendUp and close > donHighLong
+bool shortSignal = allowShort and trendUp and close < donLowShort
+
+// ---- Trailing stop state (chandelier-style, ratchets with the trend) ----
+var float longTrail  = na
+var float shortTrail = na
+
+// f_alertJson builds the Slack payload pinned by tests/test_pine_alert_template.py.
+f_alertJson(string direction, float price, string channel) =>
+    '{"text":"FX breakout: ' + syminfo.ticker + ' ' + direction + ' @ ' + str.tostring(price, format.mintick) + ' (' + channel + ', ADX ' + str.tostring(adxVal, "#.#") + ')"}'
+
+if longSignal and strategy.position_size == 0
+    strategy.entry("L", strategy.long, qty = qty)
+    longTrail := close - stopDist
+    alert(f_alertJson("long", close, str.tostring(donLenLong) + "d Donchian"), alert.freq_once_per_bar)
+
+if shortSignal and strategy.position_size == 0
+    strategy.entry("S", strategy.short, qty = qty)
+    shortTrail := close + stopDist
+    alert(f_alertJson("short", close, str.tostring(donLenShort) + "d Donchian"), alert.freq_once_per_bar)
+
+if strategy.position_size > 0
+    longTrail := math.max(longTrail, high - stopDist)
+    strategy.exit("L-Trail", from_entry = "L", stop = longTrail)
+    if close < donLowLong
+        strategy.close("L", comment = "Opposite Donchian exit")
+
+if strategy.position_size < 0
+    shortTrail := math.min(shortTrail, high + stopDist)
+    strategy.exit("S-Trail", from_entry = "S", stop = shortTrail)
+    if close > donHighShort
+        strategy.close("S", comment = "Opposite Donchian exit")
+
+if strategy.position_size == 0
+    longTrail  := na
+    shortTrail := na
+
+// ---- Visuals ----
+plot(donHighLong, "Donchian 20d high", color = color.new(color.teal, 40))
+plot(donLowLong, "Donchian 20d low", color = color.new(color.teal, 60))
+plot(donHighShort, "Donchian 55d high", color = color.new(color.orange, 60))
+plot(donLowShort, "Donchian 55d low", color = color.new(color.orange, 40))
+plot(strategy.position_size > 0 ? longTrail : na, "Long trailing stop", color = color.red, style = plot.style_linebr)
+plot(strategy.position_size < 0 ? shortTrail : na, "Short trailing stop", color = color.red, style = plot.style_linebr)
