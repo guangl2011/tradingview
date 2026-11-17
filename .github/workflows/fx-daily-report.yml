@@ -1,15 +1,12 @@
-name: FX daily report
+name: Registration ping
 
 on:
-  schedule:
-    - cron: "0 21 * * 1-5"
   workflow_dispatch:
-
-permissions:
-  contents: write
+  push:
+    branches: [main]
 
 jobs:
-  fx-daily:
+  ping:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "minimal registration probe for fx daily"
+      - run: echo "workflow registration probe"
