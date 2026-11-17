@@ -1,0 +1,12 @@
+name: Registration ping
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "workflow registration probe"
